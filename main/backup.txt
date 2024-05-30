@@ -142,7 +142,6 @@ double calculateVoltage(uint16_t binaryValue) {
     return (binaryValue * maxVoltage) / maxValue;
 }
 
-
 int spi_read(int i)
 {
     
@@ -154,12 +153,13 @@ int spi_read(int i)
     tx_data2[1] = 0x20;
     tx_data[0] += i * 2;
     tx_data2[0] += i * 2;
-    if (i == 4) {
+
+    if (i == 5) {
         row++;
-        if (row > 4||row<0) {
+        decoder(row);
+        if (row > 4) {
             row = 0;
         }
-        decoder(row);
     }
 
     
@@ -177,26 +177,22 @@ void debug_msg()
             printf("\n ");
         }
         
-        for(int i=0;i<4;i++)
+        for(int i=0;i<5;i++)
         {
             printf("%.3f ", data2[i]);
         }
         printf("\n ");
-        // printf("%.3f ", count);
-        // printf("\n");
-        // printf("%lld ", time1);
-        // printf("\n");
-    for(int i=0;i<11;i++)
+        printf("%.3f ", count);
+        printf("\n");
+        printf("%lld ", time1);
+        printf("\n");
+    for(int i=0;i<12;i++)
     {
     printf("%.3f ", data3[i]);
     }
     printf("\n");
 }
-int check_col()
-{
-    int col = (rx_data[2]-0xf1)/2;
-    return col;
-}
+
 void init()
 {
     uart1_init();
@@ -206,7 +202,7 @@ void init()
     tx_data2[0]=0xF1;
     tx_data2[1]=0x20;
 }
-int num1=0;
+
 void app_main(void)
 {
     init();
@@ -232,14 +228,14 @@ void app_main(void)
         .clock_speed_hz = 1*1000*1000,  // Clock out at 1 MHz
         .mode = 3,                      // SPI mode 1 for AD7689
         .spics_io_num = PIN_NUM_CS,     // CS pin
-        .queue_size = 1,                // We want to be able to queue 7 transactions at a time
+        .queue_size = 7,                // We want to be able to queue 7 transactions at a time
     };
     spi_device_handle_t spi2; // 定义第二个从机的设备句柄
     spi_device_interface_config_t devcfg2 = {
     .clock_speed_hz = 1*1000*1000,  // 第二个从机的时钟速度，例如1 MHz
     .mode = 3,                       // 第二个从机的SPI模式，根据需要进行调整
     .spics_io_num = PIN_NUM_CS2,     // 第二个从机的CS引脚
-    .queue_size = 1,                 // 能够同时排队的事务数
+    .queue_size = 7,                 // 能够同时排队的事务数
     };
 
     // Attach the AD7689 to the SPI bus 
@@ -253,33 +249,22 @@ void app_main(void)
     xTaskCreate(uart_task, " ", 4096, NULL, 5, NULL);
     sdmmc_init();
 
-    void print_spi_transaction(const spi_transaction_t *t) {
-    printf("SPI Transaction:\n");
-    printf("Length: %d bits\n", t->length);
-    if (t->tx_buffer) {
-        printf("TX Buffer: ");
-        for (int i = 0; i < (t->length / 8); ++i) {
-            printf("%02X ", ((uint8_t*)t->tx_buffer)[i]);
-        }
-        printf("\n");
-    } else {
-        printf("TX Buffer is NULL\n");
-    }
-    if (t->rx_buffer) {
-        printf("RX Buffer: ");
-        for (int i = 0; i < (t->length / 8); ++i) {
-            printf("%02X ", ((uint8_t*)t->rx_buffer)[i]);
-        }
-        printf("\n");
-    } else {
-        printf("RX Buffer is NULL\n");
-    }
-}
-
 
     while (1) {
         
         count=count+0.1;
+        spi_read(num);
+        decoder(row);
+        if (num<5)
+         {
+            
+            data1[num][row]=voltage1;
+            data2[num]=voltage2;
+            num++;
+         }
+        else
+        num=0;
+         
 
         spi_transaction_t t2;
         memset(&t2, 0, sizeof(t2));  // 清零结构体
@@ -296,38 +281,16 @@ void app_main(void)
         t.tx_buffer = tx_data; // 发送缓冲区
         t.rx_buffer = rx_data; // 接收缓冲区
 
-
-        spi_read(num);
+        // 发送数据并接收数据
         esp_err_t ret = spi_device_transmit(spi, &t); // SPI 设备句柄 `spi` 必须已经通过 `spi_bus_add_device` 初始化
         ESP_ERROR_CHECK(ret);
         ret = spi_device_transmit(spi2, &t2);
         ESP_ERROR_CHECK(ret);
-        int col=check_col();
-        // print_spi_transaction(&t2);
-        // // 打印发送的数据
-        // printf("num:%d\n",num);
-        // printf("row:%d\n",row);
-        // printf("rcol:%d\n",col);
+        // 打印发送的数据
         uint16_t combinedValue1 = combineTo16Bit(rx_data[0], rx_data[1]);  // 假设 MSB 在第二字节，LSB 在第一字节
         voltage1 = calculateVoltage(combinedValue1);
         uint16_t combinedValue2 = combineTo16Bit(rx_data2[0], rx_data2[1]);  // 假设 MSB 在第二字节，LSB 在第一字节
         voltage2 = calculateVoltage(combinedValue2);
-    
-        
-        data1[col][row]=voltage1;
-        data2[col]=voltage2;
-        if (num<4)
-         {
-            num=num+1;
-            
-         }
-        else
-        {
-            num=0;
-        }
-        
-        // 发送数据并接收数据
-        
 
 
 
