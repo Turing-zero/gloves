@@ -1,0 +1,24 @@
+col: 0, r: 2.5, value: 1.75
+col: 0, r: 3.0, value: 1.792
+col: 0, r: 3.5, value: 1.832
+col: 0, r: 4.0, value: 1.912
+
+col: 1, r: 2.5, value: 1.582
+col: 1, r: 3.0, value: 1.673
+col: 1, r: 3.5, value: 1.734
+col: 1, r: 4.0, value: 1.75
+
+col: 2, r: 2.5, value: 1.77
+col: 2, r: 3.0, value: 1.745
+col: 2, r: 3.5, value: 1.848
+col: 2, r: 4.0, value: 1.858
+
+col: 3, r: 2.5, value: 1.816
+col: 3, r: 3.0, value: 1.832
+col: 3, r: 3.5, value: 1.854
+col: 3, r: 4.0, value: 1.914
+
+col: 0, r: 10.0, value: 1.981
+col: 1, r: 10.0, value: 1.816
+col: 2, r: 10.0, value: 1.931
+col: 3, r: 10.0, value: 2.036

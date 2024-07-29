@@ -25,6 +25,7 @@ static esp_err_t s_example_write_file(const char *path, char *data)
     FILE *f = fopen(path, "a");
     if (f == NULL) {
         ESP_LOGE(TAG1, "Failed to open file for writing");
+        
         return ESP_FAIL;
     }
     fprintf(f, data);
@@ -121,10 +122,16 @@ void generate_file_name(char *file_name, size_t max_len) {
 
 
 
-void sd_write(double data1[5][5], double data2[5],float data3[11])
+void sd_write(double data1[5][5], double data2[5], float data3[11],const char *filename)
 {
-    const char *file_hello = MOUNT_POINT"/data.txt";
-    
+    if (filename == NULL || strlen(filename) == 0) {
+        ESP_LOGE(TAG1, "Invalid filename");
+        return;
+    }
+    // 动态使用传入的文件名
+    char file_hello[30]; // 假设路径不会超过256字符
+    snprintf(file_hello, sizeof(file_hello), "%s/%s", MOUNT_POINT, filename);
+
     char data[EXAMPLE_MAX_CHAR_SIZE];  // 增大缓冲区以适应写入整个数组的数据
     memset(data, 0, sizeof(data));
     
@@ -138,7 +145,7 @@ void sd_write(double data1[5][5], double data2[5],float data3[11])
 
     // 写入日期时间
     snprintf(data, sizeof(data), "%s\n", time_str);
-    ret = s_example_write_file(file_hello, data);
+    int ret = s_example_write_file(file_hello, data);
     if (ret != ESP_OK) {
         return; // 如果写入失败，返回
     }
@@ -163,6 +170,7 @@ void sd_write(double data1[5][5], double data2[5],float data3[11])
         return; // 如果写入失败，返回
     }
 
+    // 写入 data3 数组
     memset(data, 0, sizeof(data)); // 清空缓冲区
     snprintf(data, sizeof(data), "Data3: %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n",
              data3[0], data3[1], data3[2], data3[3], data3[4], data3[5], data3[6], data3[7], data3[8], data3[9], data3[10]);
@@ -170,5 +178,4 @@ void sd_write(double data1[5][5], double data2[5],float data3[11])
     if (ret != ESP_OK) {
         return; // 如果写入失败，返回
     }
-
 }

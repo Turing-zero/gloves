@@ -15,9 +15,11 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
+#include <math.h>
 
 #include "imu.c"
 #include "sdcard.c"
+#include <esp_wifi_types.h>
 extern float data3[11]; // 声明全局变量 data3
 static int64_t last_time = 0;
 
@@ -46,6 +48,10 @@ int64_t time2=0;
 int row,col=0;
 double data1[5][5]={0};
 double data2[5]={0};
+double init_data1[5][5]={0};
+double init_data2[5]={0};
+double diff_data1[5][5] = {0};
+double diff_data2[5] = {0};
 double voltage2 =0;
 double voltage1 =0;
 double count=0;
@@ -87,7 +93,7 @@ void send_data_over_uart() {
     char buffer[256];
     time2=get_time();
     // 发送IMU数据
-    int len = snprintf(buffer, sizeof(buffer), "IMU:%f, %f, %f；%f, %f, %f；%f, %f, %f\n",
+    int len = snprintf(buffer, sizeof(buffer), "IMU:%f, %f, %f,%f, %f, %f,%f, %f, %f\n",
                        imu_status.acc_x, imu_status.acc_y, imu_status.acc_z,
                        imu_status.omega_x, imu_status.omega_y, imu_status.omega_z,
                        imu_status.theta_x, imu_status.theta_y, imu_status.theta_z);
@@ -99,7 +105,7 @@ void send_data_over_uart() {
                        i, data1[i][0], data1[i][1], data1[i][2], data1[i][3], data1[i][4]);
         uart_write_bytes(UART_NUM_1, buffer, len);
     }
-
+    data2[4]=0;
     // 发送data2数组
     len = snprintf(buffer, sizeof(buffer), "Data2: %.3f, %.3f, %.3f, %.3f, %.3f,%.3f\n",
                    data2[0], data2[1], data2[2], data2[3], data2[4],count);
@@ -207,6 +213,121 @@ void init()
     tx_data2[1]=0x20;
 }
 int num1=0;
+void print_spi_transaction(const spi_transaction_t *t) 
+    {
+    printf("SPI Transaction:\n");
+    printf("Length: %d bits\n", t->length);
+    if (t->tx_buffer) {
+        printf("TX Buffer: ");
+        for (int i = 0; i < (t->length / 8); ++i) {
+            printf("%02X ", ((uint8_t*)t->tx_buffer)[i]);
+        }
+        printf("\n");
+    } else {
+        printf("TX Buffer is NULL\n");
+    }
+    if (t->rx_buffer) {
+        printf("RX Buffer: ");
+        for (int i = 0; i < (t->length / 8); ++i) {
+            printf("%02X ", ((uint8_t*)t->rx_buffer)[i]);
+        }
+        printf("\n");
+    } else {
+        printf("RX Buffer is NULL\n");
+    }
+    }
+void init_value()
+{
+    for(int i=0;i<5;i++)
+    {
+        for (int j = 0; j < 5; j++)
+        {
+            init_data1[i][j]=data1[i][j];
+            
+        }
+        init_data2[i]=data2[i];
+    }
+}
+void calculate_differences() {
+    // 计算 data1 和 init_data1 之间的差值
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            diff_data1[i][j] = data1[i][j] - init_data1[i][j];
+        }
+    }
+
+    // 计算 data2 和 init_data2 之间的差值
+    for (int i = 0; i < 5; i++) {
+        diff_data2[i] = data2[i] - init_data2[i];
+    }
+}
+void print_differences() {
+    printf("Differences for data1:\n");
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            printf("%.3f ", diff_data1[i][j]);
+        }
+        printf("\n");
+    }
+
+    printf("Differences for data2:\n");
+    for (int i = 0; i < 5; i++) {
+        printf("%.3f ", diff_data2[i]);
+    }
+    printf("\n");
+}
+typedef struct {
+    double x;
+    double y;
+    double z;
+} ForceVector;
+
+ForceVector calculate_total_force() {
+    ForceVector total_force = {0, 0, 0};
+
+    int is_hand_open = 1;
+    for (int i = 0; i < 5; i++) {
+        if (fabs(diff_data2[i]) > 0.5) {
+            is_hand_open = 0;
+            break;
+        }
+    }
+
+    if (is_hand_open) {
+        // 手是张开的情况
+        for (int i = 0; i < 5; i++) {
+            for (int j = 0; j < 5; j++) {
+                total_force.z += diff_data1[i][j];
+            }
+        }
+    } else {
+        // 手是弯曲的情况
+        for (int j = 0; j < 5; j++) {
+            for (int i = 0; i < 3; i++) {
+                if (j == 0) {
+                    total_force.x += data1[i][j] - data1[0][j];
+                } else if (j == 4) {
+                    total_force.x += data1[i][j] - data1[j][4];
+                }
+            }
+        }
+    }
+
+    return total_force;
+}
+
+void print_total_force(ForceVector force) {
+    printf("Total Force Vector: \n");
+    printf("X: %.3f\n", force.x);
+    printf("Y: %.3f\n", force.y);
+    printf("Z: %.3f\n", force.z);
+}
+
+void calculate_and_print_total_force() {
+    ForceVector total_force = calculate_total_force();
+    print_total_force(total_force);
+}
+
 void app_main(void)
 {
     init();
@@ -253,39 +374,15 @@ void app_main(void)
     xTaskCreate(uart_task, " ", 4096, NULL, 5, NULL);
     sdmmc_init();
 
-    void print_spi_transaction(const spi_transaction_t *t) {
-    printf("SPI Transaction:\n");
-    printf("Length: %d bits\n", t->length);
-    if (t->tx_buffer) {
-        printf("TX Buffer: ");
-        for (int i = 0; i < (t->length / 8); ++i) {
-            printf("%02X ", ((uint8_t*)t->tx_buffer)[i]);
-        }
-        printf("\n");
-    } else {
-        printf("TX Buffer is NULL\n");
-    }
-    if (t->rx_buffer) {
-        printf("RX Buffer: ");
-        for (int i = 0; i < (t->length / 8); ++i) {
-            printf("%02X ", ((uint8_t*)t->rx_buffer)[i]);
-        }
-        printf("\n");
-    } else {
-        printf("RX Buffer is NULL\n");
-    }
-}
+    const char *file_name="data.txt";
+
 
 
     while (1) {
         
         count=count+0.1;
 
-        spi_transaction_t t2;
-        memset(&t2, 0, sizeof(t2));  // 清零结构体
-        t2.length = 8 *4; // 事务长度，单位为位
-        t2.tx_buffer = tx_data2;      // 发送缓冲区
-        t2.rx_buffer = rx_data2;      // 接收缓冲区
+        
 
         // 发送数据并接收来自第二个SPI从机的数据
 
@@ -300,6 +397,13 @@ void app_main(void)
         spi_read(num);
         esp_err_t ret = spi_device_transmit(spi, &t); // SPI 设备句柄 `spi` 必须已经通过 `spi_bus_add_device` 初始化
         ESP_ERROR_CHECK(ret);
+
+        spi_transaction_t t2;
+        memset(&t2, 0, sizeof(t2)); // 清零结构体
+        t2.length = 8 *4; // 事务长度，单位为位
+        t2.tx_buffer = tx_data2;      // 发送缓冲区
+        t2.rx_buffer = rx_data2;      // 接收缓冲区
+        
         ret = spi_device_transmit(spi2, &t2);
         ESP_ERROR_CHECK(ret);
         int col=check_col();
@@ -340,10 +444,25 @@ void app_main(void)
         // ESP_LOGI(TAG, "num:%d",num);
         if(num==0&&row==0)
         {
+            printf("count:%f\n",count);
             debug_msg(); 
-            send_data_over_uart();  
-            sd_write(data1, data2,data3); 
-            vTaskDelay(pdMS_TO_TICKS(500)); // 延时等待下一次传输        
+            send_data_over_uart();
+            if(count<=10.0)
+            {
+                file_name="init.txt";
+                init_value();
+            }
+            else
+            {
+                file_name="data.txt";
+                // calculate_differences();
+                // print_differences();
+                // calculate_and_print_total_force();
+            }
+
+
+            sd_write(data1, data2,data3,file_name); 
+            vTaskDelay(pdMS_TO_TICKS(10)); // 延时等待下一次传输        
         }
         // debug_msg(); 
         // vTaskDelay(pdMS_TO_TICKS(500)); // 延时等待下一次传输 
